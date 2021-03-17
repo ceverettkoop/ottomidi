@@ -1,0 +1,89 @@
+#ifndef AYCONTROL_H
+#define AYCONTROL_H
+
+
+/*Control AY38910 through 74HC595
+code from Matio Klingemann http://incubator.quasimondo.com
+*/
+
+////Pin connected to Data in (DS) of 74HC595
+const int dataPin = 5;
+//Pin connected to latch pin (ST_CP) of 74HC595
+const int latchPin = 6;
+//Pin connected to clock pin (SH_CP) of 74HC595
+const int clockPin = 7;
+
+const int pinBC1 =  13;
+const int pinBCDIR =  12;
+
+// 2mz clock pin
+const int freqOutputPin = 11;   // OC2A output pin for ATmega328 boards
+
+const int prescale  = 1;
+const int ocr2aval  = 3;
+const float period    = 2.0 * prescale * (ocr2aval+1) / (F_CPU/1.0e6);
+const float freq      = 1.0e6 / period;
+
+
+const int tp[] = {//MIDI note number
+  15289, 14431, 13621, 12856, 12135, 11454, 10811, 10204,//0-o7
+  9631, 9091, 8581, 8099, 7645, 7215, 6810, 6428,//8-15
+  6067, 5727, 5405, 5102, 4816, 4545, 4290, 4050,//16-23
+  3822, 3608, 3405, 3214, 3034, 2863, 2703, 2551,//24-31
+  2408, 2273, 2145, 2025, 1911, 1804, 1703, 1607,//32-39
+  1517, 1432, 1351, 1276, 1204, 1136, 1073, 1012,//40-47
+  956, 902, 851, 804, 758, 716, 676, 638,//48-55
+  602, 568, 536, 506, 478, 451, 426, 402,//56-63
+  379, 358, 338, 319, 301, 284, 268, 253,//64-71
+  239, 225, 213, 201, 190, 179, 169, 159,//72-79
+  150, 142, 134, 127, 119, 113, 106, 100,//80-87
+  95, 89, 84, 80, 75, 71, 67, 63,//88-95
+  60, 56, 53, 50, 47, 45, 42, 40,//96-103
+  38, 36, 34, 32, 30, 28, 27, 25,//104-111
+  24, 22, 21, 20, 19, 18, 17, 16,//112-119
+  15, 14, 13, 13, 12, 11, 11, 10,//120-127
+  0//off
+};
+
+const int mode[7][12]{
+  {0,2,4,5,7,9,11,12,14,16,17,19}, //major
+  {0,2,3,5,7,9,10,12,14,15,17,19}, //dorian
+  {0,1,3,5,7,8,10,12,13,15,17,18}, //phyrgian
+  {0,2,4,6,7,9,11,12,14,16,18,19}, //lydian
+  {0,2,4,5,7,9,10,12,14,16,17,19}, //mixolydian
+  {0,2,3,5,7,8,10,12,14,15,17,19}, //aeolian/minor
+  {0,1,3,5,6,8,10,12,13,15,17,18}, //locrian
+};
+
+
+void set_mix( bool chA_tone,bool chB_tone,bool chC_tone,bool chA_noise,bool chB_noise,bool chC_noise );
+
+void set_chA_amplitude(int amplitude, bool useEnvelope );
+
+void set_chB_amplitude(int amplitude, bool useEnvelope );
+
+void set_chC_amplitude(int amplitude, bool useEnvelope );
+
+void set_envelope( bool hold, bool alternate, bool attack, bool cont, unsigned long frequency );
+
+void note_chA(int i);
+
+void note_chB(int i);
+
+void note_chC(int i);
+
+void noise(int i);
+
+//74HC595 commands
+
+void mode_latch();
+
+void mode_write();
+
+void mode_inactive();
+
+void write_data(unsigned char address, unsigned char data);
+
+void  init2MhzClock();
+
+#endif
