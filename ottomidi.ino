@@ -3,21 +3,11 @@
 #include "aycontrol.h"
 
 static unsigned long lastUpdate = 0;
-unsigned int triggerCount = 0;
-unsigned int sinceTriggerOn = 0;
-unsigned int sinceTriggerOff = 0;
 
 short int currentChannelIn = 0; // 0 = A, 1 = B, 2 = C
-short int currentChannelOut = 0;
 
-short int oldPitch = 0;
-short int pitch = 50;
 short int attackLimit = 100; //bigger number = longer
 short int decayLimit = attackLimit + 20;
-short int newAmplitude = 0;
-short int finalAmplitude = 0;
-short int interval = 0;
-
 float attackSpeed = 3; // bigger number = faster
 float decaySpeed = 2;
 float releaseSpeed = .25;
@@ -167,7 +157,7 @@ int getAmplitude(struct channelStruct channel){
     return  100 - (sinceDecay * decaySpeed);
   }
 
-  //once you are past decayLimit we are in sustain mode until sinceTriggerOff
+  //once you are past decayLimit we are in sustain mode until off
   //once we hit trigger off take snapshot of volume
 
   if (buttonOn && channel.sinceOn >= decayLimit){
