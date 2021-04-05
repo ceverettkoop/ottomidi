@@ -1,17 +1,16 @@
 //Custom midi based synth with AY38910
 
 #include "aycontrol.h"
+#include <MIDI.h>
 
 static unsigned long lastUpdate = 0;
 
-short int currentChannelIn = 0; // 0 = A, 1 = B, 2 = C
+short int currentChannelIn = 0;
+float attackSpeed = 2.5;
+float decaySpeed = 1;
+float releaseSpeed = 1.5;
 
-short int attackLimit = 100; //bigger number = longer
-short int decayLimit = attackLimit + 20;
-float attackSpeed = 3; // bigger number = faster
-float decaySpeed = 2;
-float releaseSpeed = .25;
-bool buttonOn = 0;
+MIDI_CREATE_DEFAULT_INSTANCE();
 
 struct channelStruct{
   short int currentPitch;
@@ -19,16 +18,14 @@ struct channelStruct{
   short int finalAmp;
   short int oldAmp;
   unsigned int sinceOn;
-  unsigned int sinceOff;
-  bool isCurrent;
+  unsigned long timeOff;
+  bool keyIsOn;
 };
 
 struct channelStruct channelStatus[]= {
   {50, 0, 0, 0, 0, 0, false},  //channel A
   {55, 0, 0, 0, 0, 0, false},  //channel B
   {57, 0, 0, 0, 0, 0, false}}; //channel C
-
-
 
 
 void setup() {
@@ -42,6 +39,7 @@ void setup() {
     pinMode(freqOutputPin, OUTPUT);
 
     pinMode(3,INPUT); //red button for note trigger
+    pinMode(9,OUTPUT);
 
 
   //reset pin
@@ -55,32 +53,35 @@ void setup() {
 
     set_mix( true, true, true, false, false, false );
 
-    Serial.begin(9600);
-
     set_envelope(1, 1, 0, 0, 5000);
 
     note_chA(50);
     note_chB(55);
     note_chC(57);
+
+    // Connect the handleNoteOn function to the library,
+    // so it is called upon reception of a NoteOn.
+    MIDI.setHandleNoteOn(handleNoteOn);  // Put only the name of the function
+
+    // Do the same for NoteOffs
+    MIDI.setHandleNoteOff(handleNoteOff);
+
+    // Initiate MIDI communications, listen to all channels
+    MIDI.begin(MIDI_CHANNEL_OMNI);
 }
 
 
 void loop(){
 
-  //update ever 10ms
+  //read MIDI constantly
+  MIDI.read();
+
+
+  //update note status every 10ms
   unsigned long now = millis();
   if ( (now - lastUpdate) > 10 ) {
 
-    short int currentChannelIn = getCurrentChannel();
-    getButton(currentChannelIn);
     lastUpdate += 10;
-//    Serial.println(channelStatus[currentChannelIn].sinceOn);
-
-    //set current channel in
-    channelStatus[0].isCurrent = false;
-    channelStatus[1].isCurrent = false;
-    channelStatus[2].isCurrent = false;
-    channelStatus[currentChannelIn].isCurrent = true;
 
 
     //set Amplitude for each channel
@@ -98,95 +99,102 @@ void loop(){
         channelStatus[i].currentAmp = 100;
       }
 
-      channelStatus[i].sinceOn++;
-      channelStatus[i].sinceOff++;
-    }
+      // if amplitude was changed, send the change
+      if ( (channelStatus[i].currentAmp / 4) != (channelStatus[i].oldAmp /4 ) ){
+        updateAmp(i);
 
-    // if any amplitude was changed, send the change
-    if ( (channelStatus[0].currentAmp / 8) != (channelStatus[0].oldAmp /8) ){
-      Serial.println("changing channel A amp");
-      set_chA_amplitude((channelStatus[0].currentAmp  / 8),0); //max volume 13?
-    }
+      }
 
-    // if any amplitude was changed, send the change
-    if ( (channelStatus[1].currentAmp / 8) != (channelStatus[1].oldAmp /8) ){
-      Serial.println("changing channel B amp");
-      set_chB_amplitude((channelStatus[1].currentAmp / 8),0); //max volume 13?
-    }
+      //advance timer
+        channelStatus[i].sinceOn++;
 
-    // if any amplitude was changed, send the change
-    if ( (channelStatus[2].currentAmp / 8) != (channelStatus[2].oldAmp /8) ){
-      Serial.println("changing channel C amp");
-      set_chC_amplitude((channelStatus[2].currentAmp / 8),0); //max volume 13?
     }
 
   }
+
 }
 
-void getButton(int channel){
-
-  if (buttonOn == 0){ //if note has been off and button is pressed, note is ON
-    if (digitalRead(3)){
-      buttonOn = 1;
-      channelStatus[channel].sinceOn = 0;
-      channelStatus[channel].sinceOff = 1000;
-  //    Serial.println("button");
-    }
-  }
-
-  else{ //if has been on and is note off, new trigger OFF
-    if (!digitalRead(3)){
-      buttonOn = 0;
-      channelStatus[channel].sinceOff = 0;
-    }
-  }
-}
 
 int getAmplitude(struct channelStruct channel){
 
+  short int attackLimit = (100 / attackSpeed) ;
+  short int decayLimit = attackLimit * 1.5;
+
   //attack
   if (channel.sinceOn < attackLimit){
-  //  Serial.println("attack");
     return (channel.sinceOn * attackSpeed);
   }
 
   //decay
-  if (channel.sinceOn >= attackLimit && channel.sinceOn < decayLimit){
+  if (channel.sinceOn < decayLimit){
     short int sinceDecay = channel.sinceOn - attackLimit;
-//    Serial.println("decay");
     return  100 - (sinceDecay * decaySpeed);
   }
 
-  //once you are past decayLimit we are in sustain mode until off
-  //once we hit trigger off take snapshot of volume
-
-  if (buttonOn && channel.sinceOn >= decayLimit){
+  if (channel.sinceOn >= decayLimit){
+    //once you are past decayLimit we are in sustain mode unless the key is off
     channel.finalAmp = channel.oldAmp;
-    return channel.finalAmp;
-//    Serial.println("sustain");
+
+    if (channel.keyIsOn){
+      return channel.finalAmp;
+    }
+
+    int elapsed = ( (millis() - channel.timeOff) / 1000);
+    return (channel.finalAmp - (elapsed * releaseSpeed) );
   }
 
-  // release if button is done or if button is for other channel
-  if (!buttonOn && channel.sinceOn >= decayLimit){
-  //  Serial.println("release");
-    return (channel.finalAmp - (channel.sinceOff * releaseSpeed));
-  }
+return 0;
 
 }
 
-short int getCurrentChannel(){
-  if (channelStatus[0].currentAmp == 0){
-    return 0;
+
+
+void handleNoteOn(byte channel, byte pitch, byte velocity)
+{
+
+currentChannelIn++;
+if (currentChannelIn == 3){
+  currentChannelIn = 0;
+}
+
+//attackSpeed = (velocity / 128);
+
+  channelStatus[currentChannelIn].sinceOn = 0;
+  channelStatus[currentChannelIn].keyIsOn = true;
+
+  digitalWrite(9,HIGH);
+
+  switch (currentChannelIn){
+    case 0: note_chA(pitch);
+      break;
+    case 1: note_chB(pitch);
+      break;
+    case 2: note_chC(pitch);
+      break;
   }
 
-  if (channelStatus[1].currentAmp == 0){
-    return 1;
-  }
 
-  if (channelStatus[2].currentAmp == 0){
-    return 2;
-  }
+}
 
-  return 0;
+void handleNoteOff(byte channel, byte pitch, byte velocity)
+{
+  channelStatus[currentChannelIn].keyIsOn = false;
+  channelStatus[currentChannelIn].timeOff = millis();
+  digitalWrite(9,LOW);
+}
+
+void updateAmp(int channel){
+  switch(channel){
+    case 0:
+      set_chA_amplitude((channelStatus[channel].currentAmp / 8), 0);
+      break;
+    case 1:
+      set_chB_amplitude((channelStatus[channel].currentAmp / 8), 0);
+      break;
+    case 2:
+      set_chC_amplitude((channelStatus[channel].currentAmp / 8), 0);
+      break;
+
+    }
 
 }
